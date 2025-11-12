@@ -132,6 +132,79 @@ def calcmap(ourBoxes, ourLabels, ourScores, trueBoxes, trueLabels, trueScores):
         ourClassBoxes = ourClassBoxes[sortIndex]
         truePositives = torch.zeros(classDetections, dtype = torch.float).to(device)
         falsePositives = torch.zeros(classDetections, dtype = torch.float).to(device)
+        for j in range(classDetections):
+            thisBox = ourBoxes[j].unsqueeze(0)
+            thisImage = ourImages[j]
+            objectBoxes = trueClassBoxes[trueClassImage == thisImage]
+            objectDifficulties = trueClassScores[trueClassImage == thisImage]
+            if objectBoxes.size(0) == 0:
+                falsePositives[j] = 1
+                continue
+            overlaps = findJaccardOverlap(thisBox, objectBoxes)
+            maxOverlap, Index = torch.max(overlaps.squeeze(0), 0)
+            originalIndex = torch.LongTensor(range(trueClassBoxes.size(0)))[trueClassImage == thisImage][Index]
+            #Confidence Threshold
+            if maxOverlap.item() > 0.3:
+               if not trueClassBoxesDetected[originalIndex]:
+                   truePositives[j] = 1
+                   trueClassBoxesDetected[originalIndex] = True
+               else:
+                   falsePositives[j] = 1
+            else:
+                falsePositives[j] = 1
+
+            totalTruePositives = torch.cumsum(truePositives, dim=0)
+            totalFalsePositives = torch.cumsum(falsePositives, dim=0)
+            totalPrecision = totalTruePositives / (totalFalsePositives + totalTruePositives)
+            totalObjects = totalTruePositives / nEasyClass
+            recallThreshold = torch.arange(0, 1.1, 0.1).tolist()
+            Precision = torch.zeros(len(recallThreshold), dtype=torch.float).to(device)
+            for r, t in enumerate(recallThreshold):
+                aboveT = totalObjects[r] >= t
+                if aboveT.any():
+                    Precision[r] = totalPrecision[aboveT].max()
+                else:
+                    Precision[r] = 0
+            averagePrecision[i-1] = Precision.mean()
+        meanPrecision = averagePrecision.mean().item()
+        averagePrecisions = {reverse_label_map[i+1]:j for i, j in enumerate(averagePrecision.tolist())}
+        return averagePrecisions, meanPrecision
+def findJaccardOverlap(box1, box2):
+    intersection = findIntersection(box1, box2)
+    area1 = (box1[:,2] - box1[:,0]) * (box1[:,3] - box1[:,1])
+    area2 = (box2[:,2] - box2[:,0]) * (box2[:,3] - box2[:,1])
+    union = area1.unsqueeze(1) + area2.unsqueeze(0) - intersection
+    return intersection / union
+
+def findIntersection(set1, set2):
+    lowerBounds = torch.max(set1[:,:2].unsqueeze(1), set2[:,:2].unsqueeze(0))
+    upperBounds = torch.min(set1[:,:2].unsqueeze(1), set2[:,:2].unsqueeze(0))
+    dimensions = torch.clamp(upperBounds - lowerBounds, min=0)
+    dimensions = dimensions[:,:,0] * dimensions[:,:,1]
+    return dimensions
+def xy_to_CXCY(xy):
+    return torch.cat([(xy[:,2:] + xy[:,:2]) / 2, xy[:,2:] - xy[:,:2]], dim=1)
+def CXCY_to_XY(CXCY):
+    return torch.cat([(CXCY[:,:2] - CXCY[:,2:]) / 2, CXCY[:,:2] + CXCY[:,2:]], dim=1)
+def CXCY_to_GCXGCY(CXCY, GCXGCY):
+    return torch.cat([(CXCY[:,:2] - GCXGCY[:,:2]) / (GCXGCY[:,2:] / 10), torch.log(CXCY[:,2:]/GCXGCY[:,2:]) * 5], dim=1)
+def GCXGCY_to_CXCY(CXCY, GCXGCY):
+    return torch.cat([(CXCY[:,:2] * GCXGCY[:,2:]) / 10 + GCXGCY[:,:2], torch.exp(CXCY[2:]/5) * GCXGCY[:,2:]], dim=1)
+def adjustLearningRate(optimizer, scale):
+    for param_group in optimizer.param_groups:
+        param_group['lr'] *= scale
+        print(f"Learning rate changed to {optimizer.param_groups[1]['lr']}")
+def clipGradient(optimizer, gradientClip):
+    for param_group in optimizer.param_groups:
+        for param in param_group['params']:
+            if param.grad is not None:
+                param.grad.data.clamp_(-gradientClip, gradientClip)
+def saveCheckPoint(epoch, model, optimizer, filename = None):
+    state = {"epoch": epoch, "model": model, "optimizer": optimizer}
+    if filename is None:
+        filename = "checkpoint" + str(epoch) + ".pth.tar"
+    torch.save(state, filename)
+    print(f"Checkpoint saved to {filename}")
 
 if __name__ == "__main__":
     createDataList("./VOC2007", "./VOC2012", "./output")
