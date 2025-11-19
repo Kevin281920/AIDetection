@@ -121,9 +121,9 @@ def calcmap(ourBoxes, ourLabels, ourScores, trueBoxes, trueLabels, trueScores):
         trueClassScores = trueScores[trueLabels == i]
         nEasyClass = (1-trueClassScores).sum().item()
         trueClassBoxesDetected = torch.zeros(trueClassScores.size(0), dtype = torch.bool).to(device)
-        ourClassImages = trueImages[trueLabels == i]
-        ourClassBoxes = trueBoxes[trueLabels == i]
-        ourClassScores = trueScores[trueLabels == i]
+        ourClassImages = ourImages[ourLabels == i]
+        ourClassBoxes = ourBoxes[ourLabels == i]
+        ourClassScores = ourScores[ourLabels == i]
         classDetections = ourClassScores.size(0)
         if classDetections == 0:
             continue
@@ -133,8 +133,8 @@ def calcmap(ourBoxes, ourLabels, ourScores, trueBoxes, trueLabels, trueScores):
         truePositives = torch.zeros(classDetections, dtype = torch.float).to(device)
         falsePositives = torch.zeros(classDetections, dtype = torch.float).to(device)
         for j in range(classDetections):
-            thisBox = ourBoxes[j].unsqueeze(0)
-            thisImage = ourImages[j]
+            thisBox = ourClassBoxes[j].unsqueeze(0)
+            thisImage = ourClassImages[j]
             objectBoxes = trueClassBoxes[trueClassImage == thisImage]
             objectDifficulties = trueClassScores[trueClassImage == thisImage]
             if objectBoxes.size(0) == 0:
@@ -145,11 +145,12 @@ def calcmap(ourBoxes, ourLabels, ourScores, trueBoxes, trueLabels, trueScores):
             originalIndex = torch.LongTensor(range(trueClassBoxes.size(0)))[trueClassImage == thisImage][Index]
             #Confidence Threshold
             if maxOverlap.item() > 0.3:
-               if not trueClassBoxesDetected[originalIndex]:
-                   truePositives[j] = 1
-                   trueClassBoxesDetected[originalIndex] = True
-               else:
-                   falsePositives[j] = 1
+                if objectDifficulties[Index] == 0:
+                   if not trueClassBoxesDetected[originalIndex]:
+                       truePositives[j] = 1
+                       trueClassBoxesDetected[originalIndex] = True
+                   else:
+                       falsePositives[j] = 1
             else:
                 falsePositives[j] = 1
 
@@ -205,6 +206,128 @@ def saveCheckPoint(epoch, model, optimizer, filename = None):
         filename = "checkpoint" + str(epoch) + ".pth.tar"
     torch.save(state, filename)
     print(f"Checkpoint saved to {filename}")
+def expand(image, boxes, filler):
+    originalHeight = image.size(1)
+    originalWidth = image.size(2)
+    maxScale = 4
+    scale = random.uniform(1, maxScale)
+    newHeight = int(originalHeight * scale)
+    newWidth = int(originalWidth * scale)
+    filler = torch.FloatTensor(filler)
+    newImage = torch.ones((3, newHeight, newWidth), dtype = torch.float) * filler.unsqueeze(1).unsqueeze(1)
+    left = random.randint(0, newWidth - originalWidth)
+    right = left + originalWidth
+    top = random.randint(0, newHeight - originalHeight)
+    bottom = top + originalHeight
+    newImage[:, top:bottom, left:right] = image
+    newBoxes = boxes + torch.FloatTensor([[left, top, left, top]])
+    return newImage, newBoxes
+def ranCrop(image, boxes, labels, difficulties):
+     originalHeight = image.size(1)
+     originalWidth = image.size(2)
+     while True:
+         minOverlap = random.choice([0,0.1,0.3,0.5,0.7,0.9,None])
+         if minOverlap is None:
+             return image, boxes, labels, difficulties
+         maxTrials = 50
+         for i in range(maxTrials):
+             scaleHeight = random.uniform(0.3,1)
+             scaleWidth = random.uniform(0.3,1)
+             newHeight = int(originalHeight * scaleHeight)
+             newWidth = int(originalWidth * scaleWidth)
+             aspectRatio = newHeight / newWidth
+             if not 0.5 < aspectRatio < 2:
+                 continue
+             left = random.randint(0, originalWidth - newWidth)
+             right = left + originalWidth
+             top = random.randint(0, originalHeight - newHeight)
+             bottom = top + originalHeight
+             cropped = torch.FloatTensor([left, top, right, bottom])
+             overlap = findJaccardOverlap(cropped.unsqueeze(0), boxes)
+             overlap = overlap.squeeze(0)
+             if overlap.max().item() < minOverlap:
+                 continue
+             newImage = image[:, top:bottom, left:right]
+             boxCenters = (boxes[:, :2] + boxes[:, 2:]) / 2
+             croppedCenters = (boxCenters[:, 0] > left) * (boxCenters[:, 0]< right) * (boxCenters[:, 1] > top) * (boxCenters[:, 1] < bottom)
+             if not croppedCenters.any():
+                 continue
+             newBoxes = boxes[croppedCenters,:]
+             newLabels = labels[croppedCenters]
+             newDifficulties = difficulties[croppedCenters]
+             newBoxes = newBoxes.float()
+             newBoxes[:, :2] = torch.max(newBoxes[:, :2], cropped[:2])
+             newBoxes[:, :2] -= cropped[:2]
+             newBoxes[:, 2:] = torch.min(newBoxes[:, 2:], cropped[2:])
+             newBoxes[:, 2:] -= cropped[2:]
+             return newImage, newBoxes, newLabels, newDifficulties
+def flip(image, boxes):
+     newImage = TF.hflip(image)
+     newBoxes = boxes.clone().float()
+     newBoxes[:, 0] = image.width - boxes[:, 0] - 1
+     newBoxes[:, 2] = image.width - boxes[:, 2] - 1
+     newBoxes = newBoxes[:, [2, 1, 0, 3]]
+     return newImage, newBoxes
 
+def resize(image, boxes, dims = (300, 300), returnPercentCords = True):
+    newImage = TF.resize(image, dims)
+    oldDims = torch.FloatTensor([image.width, image.height, image.width, image.height]).unsqueeze(0)
+    newBoxes = boxes.float() / oldDims
+    if not returnPercentCords:
+        newDims = torch.FloatTensor([dims[1], dims[0], dims[1], dims[0]]).unsqueeze(0)
+        newBoxes = newBoxes * newDims
+    return newImage, newBoxes
+def distortions(image):
+    newImage = image
+    distortions = [TF.adjust_brightness, TF.adjust_contrast, TF.adjust_saturation, TF.adjust_hue]
+    random.shuffle(distortions)
+    for d in distortions:
+        if random.random() < 0.5:
+            if d.__name__ == "adjust_hue":
+                adjustFactor = random.uniform(-18 / 255.0, 18 / 255.0)
+            else:
+                adjustFactor = random.uniform(0.5, 1.5)
+            newImage = d(newImage, adjustFactor)
+    return newImage
+def transform(image, boxes, labels, difficulties, split):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    newImage = image
+    newBoxes = boxes.float() if isinstance(boxes, torch.Tensor) else torch.tensor(boxes, dtype=torch.float)
+    newLabels = labels
+    newDifficulties = difficulties
+    if split == "train":
+        newImage = distortions(newImage)
+        newImage = TF.to_tensor(newImage)
+        if random.random() < 0.5:
+            newImage, newBoxes = expand(newImage, newBoxes, filler=mean)
+        newImage, newBoxes, newLabels, newDifficulties = ranCrop(newImage, newBoxes, newLabels, newDifficulties)
+        newImage = TF.to_pil_image(newImage)
+        if random.random() < 0.5:
+            newImage, newBoxes = flip(newImage, newBoxes)
+    newImage, newBoxes = resize(newImage, newBoxes)
+    newImage = TF.to_tensor(newImage)
+    newimage = TF.normalize(newImage, mean=mean, std=std)
+    return newImage, newBoxes, newLabels, newDifficulties
+def accuracy(scores, targets, k):
+    batchSize = targets.size(0)
+    _, index = scores.topk(k, 1, True, True)
+    correct = index.eq(targets.view(-1, 1).expand_as(index))
+    correctTotal = correct.view(-1).float().sum().item()
+    return correctTotal / (batchSize * 100)
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
 if __name__ == "__main__":
     createDataList("./VOC2007", "./VOC2012", "./output")
