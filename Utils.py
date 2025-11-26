@@ -33,7 +33,7 @@ def createDataList(VOC07Path, VOC12Path, OutputPath):
             imagePath = path/"JPEGImages"/f"{id}.jpg"
             if imagePath.exists():
                 TrainingImages.append(str(imagePath))
-                print("Parsed XML files")
+        print("Parsed XML files")
     assert len(TrainingObjects)==len(TrainingImages)
     with open(OutputPath/"trainimages.json", "w") as f:
         json.dump(TrainingImages, f)
@@ -60,7 +60,7 @@ def createDataList(VOC07Path, VOC12Path, OutputPath):
         imagePath = VOC12Path/"JPEGImages"/f"{id}.jpg"
         if imagePath.exists():
             TrainingImages.append(str(imagePath))
-            print("Parsed XML files")
+    print("Parsed XML files")
     print("Parsed Test Images ID's")
     assert len(TrainingObjects)==len(TrainingImages)
     with open(OutputPath / "testimages.json", "w") as f:
