@@ -17,6 +17,7 @@ def createDataList(VOC07Path, VOC12Path, OutputPath):
     TrainingImages = []
     TrainingObjects = []
     NumObjects = 0
+    OutputPath = Path(OutputPath)
     for path in [VOC07Path, VOC12Path]:
         with open(path/"ImageSets/Main/trainval.txt") as f:
             ids = f.read().splitlines()

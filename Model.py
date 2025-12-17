@@ -1,6 +1,5 @@
 import torch
 from torch import nn
-from torch.utils.tensorboard.summary import image_boxes
 
 from Utils import *
 import torch.nn.functional as F
@@ -230,10 +229,10 @@ class MainModel(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.numClasses = config.numClasses
-        self.rescaleFactor = nn.Parameter(torch.FloatTensor(1.0, 512, 1, 1))
+        self.numClasses = config.num_classes
+        self.rescaleFactor = nn.Parameter(torch.FloatTensor(1, 512, 1, 1))
         nn.init.constant_(self.rescaleFactor, 20.0)
-        self.priorBoxes = self.create_priorboxes()
+        self.priorscxcy = self.create_priorboxes()
         if torch.cuda.is_available():
             self.detectObjects = torch.compile(self.detectObjects)
     def forward(self, input):
@@ -257,7 +256,7 @@ class MainModel(nn.Module):
         AllImageScores = []
         AllImageBoxes = []
         for i in range(batch_size):
-            decodedLocs = CXCY_to_XY(GCXGCY_to_CXCY(predictedLocs[i], self.priorBoxes))
+            decodedLocs = CXCY_to_XY(GCXGCY_to_CXCY(predictedLocs[i], self.priorscxcy))
             ImageLabels = []
             ImageScores = []
             ImageBoxes = []
@@ -285,3 +284,88 @@ class MainModel(nn.Module):
             AllImageLabels.append(ImageLabelsTemp)
             AllImageScores.append(ImageScoresTemp)
         return AllImageBoxes, AllImageLabels, AllImageScores
+    def create_priorboxes(self):
+        fMapD = {'conv4_3': 38,   # 38x38 feature map
+            'conv7': 19,      # 19x19 feature map
+            'conv8_2': 10,    # 10x10 feature map
+            'conv9_2': 5,     # 5x5 feature map
+            'conv10_2': 3,    # 3x3 feature map
+            'conv11_2': 1     # 1x1 feature map}
+                 }
+        obj_scales = {
+            'conv4_3': 0.1,  # Small objects
+            'conv7': 0.2,  # Medium-small objects
+            'conv8_2': 0.375,  # Medium objects
+            'conv9_2': 0.55,  # Medium-large objects
+            'conv10_2': 0.725,  # Large objects
+            'conv11_2': 0.9  # Very large objects
+            }
+        aspect_ratios = {
+            'conv4_3': [1., 2., 0.5],  # 3 aspect ratios
+            'conv7': [1., 2., 3., 0.5, .333],  # 5 aspect ratios
+            'conv8_2': [1., 2., 3., 0.5, .333],  # 5 aspect ratios
+            'conv9_2': [1., 2., 3., 0.5, .333],  # 5 aspect ratios
+            'conv10_2': [1., 2., 0.5],  # 3 aspect ratios
+            'conv11_2': [1., 2., 0.5]  # 3 aspect ratios
+        }
+        fmaps = list(fMapD.keys())
+        priorBoxes = []
+        for k,fmap in enumerate(fmaps):
+            for i in range(fMapD[fmap]):
+                for j in range(fMapD[fmap]):
+                    cx = (j + 0.5) / fMapD[fmap]
+                    cy = (i + 0.5) / fMapD[fmap]
+                    for ratio in aspect_ratios[fmap]:
+                        priorBoxes.append([cx, cy, obj_scales[fmap] * sqrt(ratio), obj_scales[fmap] / sqrt(ratio)])
+                        if ratio == 1.:
+                            try: additionalScale = sqrt(obj_scales[fmap] * obj_scales[fmaps[k + 1]])
+                            except IndexError: additionalScale = 1.
+                            priorBoxes.append([cx, cy, additionalScale,additionalScale])
+        priorBoxes = torch.FloatTensor(priorBoxes).to(self.config.device)
+        priorBoxes.clamp_(0, 1)
+        return priorBoxes
+class multiboxloss(nn.Module):
+    def __init__(self, priorscxcy, threshold = 0.5, negativeRatio = 3., alpha = 1.):
+        super().__init__()
+        self.priorscxcy = priorscxcy
+        self.priorsXY = CXCY_to_XY(priorscxcy)
+        self.threshold = threshold
+        self.negativeRatio = negativeRatio
+        self.alpha = alpha
+        self.smoothL1 = nn.L1Loss()
+        self.cross_entropy = nn.CrossEntropyLoss(reduction='none')
+    def forward(self, predictedLocs, predictedScores, boxes, labels):
+        batch_size = predictedLocs.size(0)
+        numPriors = self.priorsXY.size(0)
+        numClasses = predictedScores.size(2)
+        assert numPriors == predictedScores.size(1) == predictedLocs.size() == predictedScores.size()
+        trueLocs = torch.zeros((batch_size, numPriors, 4), dtype=torch.float).to(self.priorscxcy.device)
+        trueClasses = torch.zeros((batch_size, numPriors), dtype=torch.long).to(self.priorscxcy.device)
+        for i in range(batch_size):
+            numObject = boxes[i].size(0)
+            if numObject == 0: continue
+            overlap = findJaccardOverlap(boxes[i], self.priorsXY)
+            overlapPerPrior, objectPerPrior = overlap.max(dim=0)
+            _, priorPerObject = overlap.max(dim=0)
+            objectPerPrior [priorPerObject] = torch.LongTensor(range(numObject)).to(self.priorscxcy.device)
+            overlapPerPrior[priorPerObject] = 1.
+            labelPerPrior = labels[i][objectPerPrior]
+            labelPerPrior[overlapPerPrior < self.threshold] = 0
+            trueClasses[i] = labelPerPrior
+            trueLocs[i] = CXCY_to_GCXGCY(xy_to_CXCY(boxes[i][objectPerPrior]), self.priorscxcy)
+        positivePriors = trueClasses != 0
+        LocLoss = self.smoothL1(predictedLocs[positivePriors], trueLocs[positivePriors])
+        numOfPositives = positivePriors.sum(dim=1)
+        numNegatives = self.negativeRatio * numOfPositives
+        confLoss = self.cross_entropy(predictedScores.view(-1, numClasses), trueClasses.view(-1))
+        confLoss.view(batch_size, numPriors)
+        confLossPos = confLoss[positivePriors]
+        confLossNeg = confLoss.clone()
+        confLossNeg[positivePriors] = 0
+        confLossNeg,_ = confLossNeg.sort(dim=1, descending=True)
+        hardRanks = torch.longTensor(range(numPriors)).unsqueeze(0).expand_as(confLossNeg).to(self.priorscxcy.device)
+        hardNegatives = hardRanks < numNegatives.unsqueeze(1)
+        confLossHard = confLossNeg[hardNegatives]
+        confLoss = (confLossHard.sum() + confLossPos.sum()) / numOfPositives.sum().float()
+        confLoss + self.alpha * LocLoss
+        return confLoss
