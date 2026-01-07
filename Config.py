@@ -20,4 +20,4 @@ class DataConfig:
     workers = 4
 class ModelConfig:
     num_classes = 21
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda")

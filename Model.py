@@ -10,6 +10,7 @@ from torchvision.ops import boxes as B
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class VGGBase(nn.Module):
     def __init__(self):
+        super().__init__()
         self.conv1_1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)  # stride = 1, by default
         self.conv1_2 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -32,7 +33,7 @@ class VGGBase(nn.Module):
         self.conv6 = nn.Conv2d(512, 1024, kernel_size=3, padding=6, dilation=6)  # atrous convolution
         self.conv7 = nn.Conv2d(1024, 1024, kernel_size=1)
         # Load pretrained layers
-        self.load_pretrained_layers()
+        self.LoadPretrainedLayers()
     def forward(self, image):
         out = F.relu(self.conv1_1(image))  # (N, 64, 300, 300)
         out = F.relu(self.conv1_2(out))  # (N, 64, 300, 300)
@@ -95,7 +96,7 @@ class AuxiliaryConvolutions(nn.Module):
         self.conv11_2 = nn.Conv2d(128, 256, kernel_size=3, padding=0)  # dim. reduction because padding = 0
         # Initialize convolutions' parameters
         self.InitalizeCon2d()
-    def Forward(self, x):
+    def forward(self, x):
         out = F.relu(self.conv8_1((x)))  # (N, 256, 19, 19)
         out = F.relu(self.conv8_2(out))  # (N, 512, 10, 10)
         conv8_2_feats = out  # (N, 512, 10, 10)
@@ -195,28 +196,28 @@ class PredictionConvolutions(nn.Module):
         c_conv4_3 = c_conv4_3.permute(0, 2, 3,
                                       1).contiguous()  # (N, 38, 38, 4 * n_classes), to match prior-box order (after .view())
         c_conv4_3 = c_conv4_3.view(batch_size, -1,
-                                   self.n_classes)  # (N, 5776, n_classes), there are a total 5776 boxes on this feature map
+                                   self.numClasses)  # (N, 5776, n_classes), there are a total 5776 boxes on this feature map
 
         c_conv7 = self.cl_conv7(conv7_feats)  # (N, 6 * n_classes, 19, 19)
         c_conv7 = c_conv7.permute(0, 2, 3, 1).contiguous()  # (N, 19, 19, 6 * n_classes)
         c_conv7 = c_conv7.view(batch_size, -1,
-                               self.n_classes)  # (N, 2166, n_classes), there are a total 2116 boxes on this feature map
+                               self.numClasses)  # (N, 2166, n_classes), there are a total 2116 boxes on this feature map
 
         c_conv8_2 = self.cl_conv8_2(conv8_2_feats)  # (N, 6 * n_classes, 10, 10)
         c_conv8_2 = c_conv8_2.permute(0, 2, 3, 1).contiguous()  # (N, 10, 10, 6 * n_classes)
-        c_conv8_2 = c_conv8_2.view(batch_size, -1, self.n_classes)  # (N, 600, n_classes)
+        c_conv8_2 = c_conv8_2.view(batch_size, -1, self.numClasses)  # (N, 600, n_classes)
 
         c_conv9_2 = self.cl_conv9_2(conv9_2_feats)  # (N, 6 * n_classes, 5, 5)
         c_conv9_2 = c_conv9_2.permute(0, 2, 3, 1).contiguous()  # (N, 5, 5, 6 * n_classes)
-        c_conv9_2 = c_conv9_2.view(batch_size, -1, self.n_classes)  # (N, 150, n_classes)
+        c_conv9_2 = c_conv9_2.view(batch_size, -1, self.numClasses)  # (N, 150, n_classes)
 
         c_conv10_2 = self.cl_conv10_2(conv10_2_feats)  # (N, 4 * n_classes, 3, 3)
         c_conv10_2 = c_conv10_2.permute(0, 2, 3, 1).contiguous()  # (N, 3, 3, 4 * n_classes)
-        c_conv10_2 = c_conv10_2.view(batch_size, -1, self.n_classes)  # (N, 36, n_classes)
+        c_conv10_2 = c_conv10_2.view(batch_size, -1, self.numClasses)  # (N, 36, n_classes)
 
         c_conv11_2 = self.cl_conv11_2(conv11_2_feats)  # (N, 4 * n_classes, 1, 1)
         c_conv11_2 = c_conv11_2.permute(0, 2, 3, 1).contiguous()  # (N, 1, 1, 4 * n_classes)
-        c_conv11_2 = c_conv11_2.view(batch_size, -1, self.n_classes)  # (N, 4, n_classes)
+        c_conv11_2 = c_conv11_2.view(batch_size, -1, self.numClasses)  # (N, 4, n_classes)
 
         # A total of 8732 boxes
         # Concatenate in this specific order (i.e. must match the order of the prior-boxes)
@@ -233,6 +234,9 @@ class MainModel(nn.Module):
         self.rescaleFactor = nn.Parameter(torch.FloatTensor(1, 512, 1, 1))
         nn.init.constant_(self.rescaleFactor, 20.0)
         self.priorscxcy = self.create_priorboxes()
+        self.base = VGGBase()
+        self.aux_convs = AuxiliaryConvolutions()
+        self.pred_convs = PredictionConvolutions(self.numClasses)
         if torch.cuda.is_available():
             self.detectObjects = torch.compile(self.detectObjects)
     def forward(self, input):
@@ -240,7 +244,7 @@ class MainModel(nn.Module):
         # Rescale conv4_3 after L2 norm
         norm = conv4_3_feats.pow(2).sum(dim=1, keepdim=True).sqrt()  # (N, 1, 38, 38)
         conv4_3_feats = conv4_3_feats / norm  # (N, 512, 38, 38)
-        conv4_3_feats = conv4_3_feats * self.rescale_factors  # (N, 512, 38, 38)
+        conv4_3_feats = conv4_3_feats * self.rescaleFactor  # (N, 512, 38, 38)
         # (PyTorch autobroadcasts singleton dimensions during arithmetic)
         # Run auxiliary convolutions (higher level feature map generators)
         conv8_2_feats, conv9_2_feats, conv10_2_feats, conv11_2_feats = \
@@ -338,7 +342,7 @@ class multiboxloss(nn.Module):
         batch_size = predictedLocs.size(0)
         numPriors = self.priorsXY.size(0)
         numClasses = predictedScores.size(2)
-        assert numPriors == predictedScores.size(1) == predictedLocs.size() == predictedScores.size()
+        assert numPriors == predictedScores.size(1) == predictedLocs.size(1)
         trueLocs = torch.zeros((batch_size, numPriors, 4), dtype=torch.float).to(self.priorscxcy.device)
         trueClasses = torch.zeros((batch_size, numPriors), dtype=torch.long).to(self.priorscxcy.device)
         for i in range(batch_size):
@@ -346,7 +350,7 @@ class multiboxloss(nn.Module):
             if numObject == 0: continue
             overlap = findJaccardOverlap(boxes[i], self.priorsXY)
             overlapPerPrior, objectPerPrior = overlap.max(dim=0)
-            _, priorPerObject = overlap.max(dim=0)
+            _, priorPerObject = overlap.max(dim=1)
             objectPerPrior [priorPerObject] = torch.LongTensor(range(numObject)).to(self.priorscxcy.device)
             overlapPerPrior[priorPerObject] = 1.
             labelPerPrior = labels[i][objectPerPrior]
@@ -358,14 +362,14 @@ class multiboxloss(nn.Module):
         numOfPositives = positivePriors.sum(dim=1)
         numNegatives = self.negativeRatio * numOfPositives
         confLoss = self.cross_entropy(predictedScores.view(-1, numClasses), trueClasses.view(-1))
-        confLoss.view(batch_size, numPriors)
+        confLoss = confLoss.view(batch_size, numPriors)
         confLossPos = confLoss[positivePriors]
         confLossNeg = confLoss.clone()
         confLossNeg[positivePriors] = 0
         confLossNeg,_ = confLossNeg.sort(dim=1, descending=True)
-        hardRanks = torch.longTensor(range(numPriors)).unsqueeze(0).expand_as(confLossNeg).to(self.priorscxcy.device)
+        hardRanks = torch.LongTensor(range(numPriors)).unsqueeze(0).expand_as(confLossNeg).to(self.priorscxcy.device)
         hardNegatives = hardRanks < numNegatives.unsqueeze(1)
         confLossHard = confLossNeg[hardNegatives]
         confLoss = (confLossHard.sum() + confLossPos.sum()) / numOfPositives.sum().float()
-        confLoss + self.alpha * LocLoss
-        return confLoss
+        totalLoss = confLoss + self.alpha * LocLoss
+        return totalLoss

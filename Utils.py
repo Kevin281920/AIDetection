@@ -11,6 +11,12 @@ voc_labels = ('aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'c
 label_map = {k:v+1 for v,k in enumerate(voc_labels)}
 label_map["Background"] = 0
 reverse_label_map = {v:k for k,v in label_map.items()}
+
+distinct_colors = ['#e6194b', '#3cb44b', '#ffe119', '#0082c8', '#f58231', '#911eb4', '#46f0f0', '#f032e6',
+                   '#d2f53c', '#fabebe', '#008080', '#000080', '#aa6e28', '#fffac8', '#800000', '#aaffc3', '#808000',
+                   '#ffd8b1', '#e6beff', '#808080', '#FFFFFF']
+# Assign a unique color to each class for visualization
+label_color_map = {k: distinct_colors[i] for i, k in enumerate(label_map.keys())}
 def createDataList(VOC07Path, VOC12Path, OutputPath):
     VOC07Path = Path(VOC07Path).absolute()
     VOC12Path = Path(VOC12Path).absolute()
@@ -90,7 +96,7 @@ def parseAnnotations(path):
         boxes.append([xmin, ymin, xmax, ymax])
     return {"boxes": boxes, "labels": labels, "difficulty": difficulty}
 def Decimate(tensor, m):
-    assert tensor.dim() == m.size()
+    #assert tensor.dim() == m.size()
     for d in range(tensor.dim()):
         if m[d] != None:
             indices = torch.arange(start=0, end=tensor.size(d), step=m[d])

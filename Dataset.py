@@ -36,7 +36,7 @@ class Data (Dataset):
         if len(images) != len(objects):
             return None
         return images, objects
-    def __getItem__(self, index):
+    def __getitem__(self, index):
         imagePath = Path(self.images[index])
         if not imagePath.exists():
             altPath = self.DataConfig.imagePath/Path(self.images[index]).name
@@ -48,7 +48,11 @@ class Data (Dataset):
         objects = self.objects[index]
         boxes = BoundingBoxes(objects["boxes"], format="XYXY", canvas_size=image.size[::-1])
         labels = torch.tensor(objects["labels"], dtype=torch.long)
-        difficulties = torch.tensor(objects["difficulties"], dtype=torch.bool)
+        if "difficulties" in objects:
+            difficulties = torch.tensor(objects["difficulties"], dtype=torch.bool)
+        else:
+            difficulties = torch.zeros(len(objects["labels"]), dtype=torch.bool)
+
         if not self.DataConfig.keepDifficult:
             keepMask = ~difficulties
             boxes = boxes[keepMask]
