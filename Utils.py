@@ -208,7 +208,7 @@ def clipGradient(optimizer, gradientClip):
             if param.grad is not None:
                 param.grad.data.clamp_(-gradientClip, gradientClip)
 def saveCheckPoint(epoch, model, optimizer, filename = None):
-    state = {"epoch": epoch, "model": model, "optimizer": optimizer}
+    state = {"epoch": epoch, "model": model.state_dict(), "optimizer": optimizer.state_dict()}
     if filename is None:
         filename = "checkpoint" + str(epoch) + ".pth.tar"
     torch.save(state, filename)

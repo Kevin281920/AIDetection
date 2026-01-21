@@ -10,30 +10,7 @@ from DatasetImport import *
 from Utils import *
 from Config import *
 from Dataset import *
-'''Traceback (most recent call last):
-  File "C:\Users\kevin\PycharmProjects\AI_Detection\train.py", line 79, in <module>
-    main()
-    ~~~~^^
-  File "C:\Users\kevin\PycharmProjects\AI_Detection\train.py", line 51, in main
-    saveCheckPoint(epoch, model, optimizer)
-    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\kevin\PycharmProjects\AI_Detection\Utils.py", line 208, in saveCheckPoint
-    if param.grad is not None:
-    ^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\kevin\PycharmProjects\AI_Detection\.venv\Lib\site-packages\torch\serialization.py", line 967, in save
-    _save(
-    ~~~~~^
-        obj,
-        ^^^^
-    ...<3 lines>...
-        _disable_byteorder_record,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\kevin\PycharmProjects\AI_Detection\.venv\Lib\site-packages\torch\serialization.py", line 1213, in _save
-    pickler.dump(obj)
-    ~~~~~~~~~~~~^^^^^
-_pickle.PicklingError: Can't pickle <function MainModel.detectObjects at 0x0000023DAA34E480>: it's not the same object as Model.MainModel.detectObjects'''
+
 def main():
     dataConfig = DataConfig()
     modelConfig = ModelConfig()
@@ -55,10 +32,27 @@ def main():
         optimizer = torch.optim.SGD(params=[{"params": biases, "lr": 2 * trainConfig.learning_rate}, {'params': notBiases}], lr=trainConfig.learning_rate, momentum=trainConfig.momentum, weight_decay=trainConfig.weight_decay)
     else:
         print("Loading From Checkpoint")
-        checkpoint = torch.load(checkPointPath)
-        startEpochs = checkpoint["epochs"] + 1
-        model = checkpoint["model"]
-        optimizer = checkpoint["optimizer"]
+        checkpoint = torch.load(checkPointPath, map_location=modelConfig.device)
+        startEpochs = checkpoint["epoch"] + 1
+        model = MainModel(modelConfig)
+        biases = []
+        notBiases = []
+        for paramName, param in model.named_parameters():
+            if param.requires_grad:
+                if paramName.endswith("bias"):
+                    biases.append(param)
+                else:
+                    notBiases.append(param)
+        optimizer = torch.optim.SGD(
+            params=[{"params": biases, "lr": 2 * trainConfig.learning_rate}, {'params': notBiases}],
+            lr=trainConfig.learning_rate, momentum=trainConfig.momentum, weight_decay=trainConfig.weight_decay)
+        model.load_state_dict(checkpoint["model"])
+        optimizer.load_state_dict(checkpoint["optimizer"])
+        for state in optimizer.state.values():
+            for k, v in state.items():
+                if torch.is_tensor(v):
+                    state[k] = v.cuda()
+
     model = model.to(modelConfig.device)
     criterion = multiboxloss(priorscxcy=model.priorscxcy).to(modelConfig.device)
     trainDataSet = Data(dataConfig, Split="train")
