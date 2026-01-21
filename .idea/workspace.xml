@@ -7,6 +7,7 @@
     <list default="true" id="4cf87138-0114-4807-8af9-65849073a64a" name="Changes" comment="saving, learning rate, gradient, intersection of boxes, image resizing and distorting, model">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Eval.py" beforeDir="false" afterPath="$PROJECT_DIR$/Eval.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Model.py" beforeDir="false" afterPath="$PROJECT_DIR$/Model.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/Utils.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -153,7 +154,15 @@
       <option name="project" value="LOCAL" />
       <updated>1768957784018</updated>
     </task>
-    <option name="localTasksCounter" value="10" />
+    <task id="LOCAL-00010" summary="saving, learning rate, gradient, intersection of boxes, image resizing and distorting, model">
+      <option name="closed" value="true" />
+      <created>1768958757677</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1768958757677</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">

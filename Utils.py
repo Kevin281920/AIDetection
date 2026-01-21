@@ -196,8 +196,11 @@ def CXCY_to_XY(CXCY):
     return torch.cat([(CXCY[:,:2] - CXCY[:,2:]) / 2, CXCY[:,:2] + CXCY[:,2:]], dim=1)
 def CXCY_to_GCXGCY(CXCY, GCXGCY):
     return torch.cat([(CXCY[:,:2] - GCXGCY[:,:2]) / (GCXGCY[:,2:] / 10), torch.log(CXCY[:,2:]/GCXGCY[:,2:]) * 5], dim=1)
-def GCXGCY_to_CXCY(CXCY, GCXGCY):
-    return torch.cat([(CXCY[:,:2] * GCXGCY[:,2:]) / 10 + GCXGCY[:,:2], torch.exp(CXCY[:, 2:]/5) * GCXGCY[:,2:]], dim=1)
+def GCXGCY_to_CXCY(gcxgcy, priors_cxcy):
+    return torch.cat([
+        gcxgcy[:, :2] * priors_cxcy[:, 2:] / 10 + priors_cxcy[:, :2],
+        torch.exp(gcxgcy[:, 2:] / 5) * priors_cxcy[:, 2:]
+    ], dim=1)
 def adjustLearningRate(optimizer, scale):
     for param_group in optimizer.param_groups:
         param_group['lr'] *= scale

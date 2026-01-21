@@ -41,7 +41,7 @@ class Evaluator:
         except IOError:
             print(f"Font file {self.font} not found, using default font")
             self.font = ImageFont.load_default()
-    def detect(self, img, minScore = 0.5, maxOverlap = 0.5, topK = 200, supressedClasses = None):
+    def detect(self, img, minScore = 0, maxOverlap = 0.5, topK = 200, supressedClasses = None):
         originalImage = Image.open(img).convert('RGB')
         TensorImage = self.transforms(originalImage).unsqueeze(0).to(self.device)
         with torch.no_grad():
@@ -68,7 +68,7 @@ class Evaluator:
                 continue
             boxLoc = detBoxes[i].tolist()
             score = detScores[i].item()
-            if score < 0.1:
+            if score > 0.1:
                 continue
             color = label_color_map[detLabels[i]]
             self._draw_BoundingBox(draw, boxLoc, color)
@@ -82,10 +82,10 @@ class Evaluator:
             draw.rectangle(xy=offsetBox, outline=color, width=1)
     def _draw_Label(self, draw, boxLoc, label, score, color):
         try:
-            label_text = f"{label.upper()} {score:.2f}"
+            label_text = f"{label.upper()} {score:.6f}"
             text_size = self.font.getsize(label_text)
         except AttributeError:
-            label_text = f"{label.upper()} {score:.2f}"
+            label_text = f"{label.upper()} {score:.6f}"
             text_size = (len(label_text) * 10, 15)
             text_location = [boxLoc[0] + 2., boxLoc[1] - text_size[1]]
             textbox_location = [
@@ -100,15 +100,15 @@ class Evaluator:
 
             # Draw text
             draw.text(xy=text_location, text=label_text, fill='white', font=self.font)
-def detectSingleImage(img, checkPointPath= "checkpoint0.pth.tar", outputPath = "./", minConfidence = 0.5):
+def detectSingleImage(img, checkPointPath= "checkpoint0.pth.tar", outputPath = "./output.jpg", minConfidence = 0.5):
     detector = Evaluator(checkPointPath)
     result = detector.detect(img)
     if outputPath:
         result.save(outputPath)
     return result
 def main():
-    imagePath = "./VOC2012/JPEGImages/2007_000452.jpg"
-    outputPath = "./outputPath"
+    imagePath = "./VOC2012/JPEGImages/2007_000480.jpg"
+    outputPath = "./outputPath/output.jpg"
     result = detectSingleImage(imagePath, minConfidence = 0.1)
 if __name__ == '__main__':
     main()

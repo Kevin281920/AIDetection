@@ -276,7 +276,7 @@ class MainModel(nn.Module):
             if not ImageBoxes:
                 ImageBoxes.append(torch.tensor([[0., 0., 1., 1.]], device=decodedLocs.device))
                 ImageLabels.append(torch.tensor([0], device=decodedLocs.device))
-                ImageLabels.append(torch.tensor([0.], device=decodedLocs.device))
+                ImageScores.append(torch.tensor([0.], device=decodedLocs.device))
             ImageBoxesTemp = torch.cat(ImageBoxes, dim=0)
             ImageLabelsTemp = torch.cat(ImageLabels, dim=0)
             ImageScoresTemp = torch.cat(ImageScores, dim=0)
