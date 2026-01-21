@@ -5,7 +5,10 @@ from pathlib import Path
 from Model import *
 from Utils import *
 from Config import ModelConfig
-class eval:
+import os
+os.environ["TORCHDYNAMO_DISABLE"] = "1"
+torch._dynamo.disable()
+class Evaluator:
     def __init__(self, checkpointPath):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.font = Path("./calibril.ttf")
@@ -43,7 +46,7 @@ class eval:
         TensorImage = self.transforms(originalImage).unsqueeze(0).to(self.device)
         with torch.no_grad():
             PredictedLoc, PredictedScore = self.model(TensorImage)
-        detBoxes, detLabels, detScores = self.model.detect(PredictedLoc, PredictedScore, minScore=minScore, maxOverlap=maxOverlap, topK=topK)
+        detBoxes, detLabels, detScores = self.model.detectObjects(PredictedLoc, PredictedScore, minScore=minScore, maxOverlap=maxOverlap, topK=topK)
         detBoxes = detBoxes[0].cpu()
         detScores = detScores[0].cpu()
         detLabels = [reverse_label_map[l]
@@ -65,7 +68,7 @@ class eval:
                 continue
             boxLoc = detBoxes[i].tolist()
             score = detScores[i].item()
-            if score < 0.5:
+            if score < 0.1:
                 continue
             color = label_color_map[detLabels[i]]
             self._draw_BoundingBox(draw, boxLoc, color)
@@ -97,8 +100,8 @@ class eval:
 
             # Draw text
             draw.text(xy=text_location, text=label_text, fill='white', font=self.font)
-def detectSingleImage(img, checkPointPath= "checkpoint0.pth.tar", outputPath = None, minConfidence = 0.5):
-    detector = eval(checkPointPath)
+def detectSingleImage(img, checkPointPath= "checkpoint0.pth.tar", outputPath = "./", minConfidence = 0.5):
+    detector = Evaluator(checkPointPath)
     result = detector.detect(img)
     if outputPath:
         result.save(outputPath)
