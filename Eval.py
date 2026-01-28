@@ -14,7 +14,8 @@ class Evaluator:
         self.font = Path("./calibril.ttf")
         checkpoint = torch.load(checkpointPath, map_location=self.device, weights_only=False)
         startEpochs = checkpoint["epoch"] + 1
-        self.model = MainModel(ModelConfig)
+        #self.model = MainModel(ModelConfig)
+        self.model = checkpoint["model"]
         biases = []
         notBiases = []
         for paramName, param in self.model.named_parameters():
@@ -24,7 +25,7 @@ class Evaluator:
                 else:
                     notBiases.append(param)
 
-        self.model.load_state_dict(checkpoint["model"])
+        #self.model.load_state_dict(checkpoint["model"])
 
 
         self.model = self.model.to(ModelConfig.device)
@@ -49,6 +50,7 @@ class Evaluator:
         detBoxes, detLabels, detScores = self.model.detectObjects(PredictedLoc, PredictedScore, minScore=minScore, maxOverlap=maxOverlap, topK=topK)
         detBoxes = detBoxes[0].cpu()
         detScores = detScores[0].cpu()
+        detBoxes.clamp_(min=0, max=1)
         detLabels = [reverse_label_map[l]
                      for l in detLabels[0].cpu().tolist()]
         if detLabels == ["background"] or len(detLabels) == 0:
@@ -68,7 +70,7 @@ class Evaluator:
                 continue
             boxLoc = detBoxes[i].tolist()
             score = detScores[i].item()
-            if score > 0.1:
+            if score < 0.1:
                 continue
             color = label_color_map[detLabels[i]]
             self._draw_BoundingBox(draw, boxLoc, color)
@@ -100,14 +102,14 @@ class Evaluator:
 
             # Draw text
             draw.text(xy=text_location, text=label_text, fill='white', font=self.font)
-def detectSingleImage(img, checkPointPath= "checkpoint0.pth.tar", outputPath = "./output.jpg", minConfidence = 0.5):
+def detectSingleImage(img, checkPointPath= "checkpoint1.pth.tar", outputPath = "./output.jpg", minConfidence = 0.5):
     detector = Evaluator(checkPointPath)
-    result = detector.detect(img)
+    result = detector.detect(img, minScore=minConfidence)
     if outputPath:
         result.save(outputPath)
     return result
 def main():
-    imagePath = "./VOC2012/JPEGImages/2007_000480.jpg"
+    imagePath = "./VOC2012/JPEGImages/2007_000027.jpg"
     outputPath = "./outputPath/output.jpg"
     result = detectSingleImage(imagePath, minConfidence = 0.1)
 if __name__ == '__main__':

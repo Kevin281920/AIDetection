@@ -232,13 +232,13 @@ class MainModel(nn.Module):
         self.config = config
         self.numClasses = config.num_classes
         self.rescaleFactor = nn.Parameter(torch.FloatTensor(1, 512, 1, 1))
-        nn.init.constant_(self.rescaleFactor, 20.0)
+        nn.init.constant_(self.rescaleFactor, 20)
         self.priorscxcy = self.create_priorboxes()
         self.base = VGGBase()
         self.aux_convs = AuxiliaryConvolutions()
         self.pred_convs = PredictionConvolutions(self.numClasses)
-        if torch.cuda.is_available():
-            self.detectObjects = torch.compile(self.detectObjects)
+        #if torch.cuda.is_available():
+          #  self.detectObjects = torch.compile(self.detectObjects)
     def forward(self, input):
         conv4_3_feats, conv7_feats = self.base(input)  # (N, 512, 38, 38), (N, 1024, 19, 19)
         # Rescale conv4_3 after L2 norm
@@ -338,38 +338,76 @@ class multiboxloss(nn.Module):
         self.alpha = alpha
         self.smoothL1 = nn.L1Loss()
         self.cross_entropy = nn.CrossEntropyLoss(reduction='none')
+
     def forward(self, predictedLocs, predictedScores, boxes, labels):
         batch_size = predictedLocs.size(0)
         numPriors = self.priorsXY.size(0)
         numClasses = predictedScores.size(2)
         assert numPriors == predictedScores.size(1) == predictedLocs.size(1)
+
         trueLocs = torch.zeros((batch_size, numPriors, 4), dtype=torch.float).to(self.priorscxcy.device)
         trueClasses = torch.zeros((batch_size, numPriors), dtype=torch.long).to(self.priorscxcy.device)
-        for i in range(batch_size):
-            numObject = boxes[i].size(0)
-            if numObject == 0: continue
-            overlap = findJaccardOverlap(boxes[i], self.priorsXY)
-            overlapPerPrior, objectPerPrior = overlap.max(dim=0)
-            _, priorPerObject = overlap.max(dim=1)
-            objectPerPrior [priorPerObject] = torch.LongTensor(range(numObject)).to(self.priorscxcy.device)
-            overlapPerPrior[priorPerObject] = 1.
-            labelPerPrior = labels[i][objectPerPrior]
-            labelPerPrior[overlapPerPrior < self.threshold] = 0
-            trueClasses[i] = labelPerPrior
-            trueLocs[i] = CXCY_to_GCXGCY(xy_to_CXCY(boxes[i][objectPerPrior]), self.priorscxcy)
+
+        # --- OPTIMIZATION START ---
+        # We use no_grad() here because calculating Overlap/Matching
+        # does NOT require backpropagation. This saves massive GPU overhead.
+        with torch.no_grad():
+            for i in range(batch_size):
+                numObject = boxes[i].size(0)
+                if numObject == 0:
+                    # If no objects, all classes remain 0 (background)
+                    continue
+
+                overlap = findJaccardOverlap(boxes[i], self.priorsXY)
+                overlapPerPrior, objectPerPrior = overlap.max(dim=0)
+                _, priorPerObject = overlap.max(dim=1)
+
+                # Force the best prior for each object to match that object
+                objectPerPrior[priorPerObject] = torch.arange(numObject, device=self.priorscxcy.device)
+                overlapPerPrior[priorPerObject] = 1.0
+
+                labelPerPrior = labels[i][objectPerPrior]
+                # Set priors with low overlap to background (index 0)
+                labelPerPrior[overlapPerPrior < self.threshold] = 0
+
+                trueClasses[i] = labelPerPrior
+                # Encode the ground truth boxes into offsets (GCXGCY)
+                trueLocs[i] = CXCY_to_GCXGCY(xy_to_CXCY(boxes[i][objectPerPrior]), self.priorscxcy)
+        # --- OPTIMIZATION END ---
+
         positivePriors = trueClasses != 0
-        LocLoss = self.smoothL1(predictedLocs[positivePriors], trueLocs[positivePriors])
+
+        # Localization Loss (Smooth L1)
+        # Check if there are any positives to avoid NaN
+        if positivePriors.sum() > 0:
+            LocLoss = self.smoothL1(predictedLocs[positivePriors], trueLocs[positivePriors])
+        else:
+            LocLoss = torch.tensor(0.0, device=self.priorscxcy.device)
+
+        # Confidence Loss (Hard Negative Mining)
         numOfPositives = positivePriors.sum(dim=1)
         numNegatives = self.negativeRatio * numOfPositives
+
         confLoss = self.cross_entropy(predictedScores.view(-1, numClasses), trueClasses.view(-1))
         confLoss = confLoss.view(batch_size, numPriors)
+
         confLossPos = confLoss[positivePriors]
+
         confLossNeg = confLoss.clone()
-        confLossNeg[positivePriors] = 0
-        confLossNeg,_ = confLossNeg.sort(dim=1, descending=True)
-        hardRanks = torch.LongTensor(range(numPriors)).unsqueeze(0).expand_as(confLossNeg).to(self.priorscxcy.device)
+        confLossNeg[positivePriors] = 0.  # Ignore positives for negative mining
+        confLossNeg, _ = confLossNeg.sort(dim=1, descending=True)
+
+        hardRanks = torch.arange(numPriors, device=self.priorscxcy.device).unsqueeze(0).expand_as(confLossNeg)
         hardNegatives = hardRanks < numNegatives.unsqueeze(1)
+
         confLossHard = confLossNeg[hardNegatives]
-        confLoss = (confLossHard.sum() + confLossPos.sum()) / numOfPositives.sum().float()
+
+        # Normalize by number of positive matches
+        N = numOfPositives.sum().float()
+        if N == 0:
+            N = 1.0  # Prevent division by zero
+
+        confLoss = (confLossHard.sum() + confLossPos.sum()) / N
         totalLoss = confLoss + self.alpha * LocLoss
+
         return totalLoss

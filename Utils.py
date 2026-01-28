@@ -108,7 +108,7 @@ def calcmap(ourBoxes, ourLabels, ourScores, trueBoxes, trueLabels, trueScores):
     trueImages = []
     for i in range(len(trueLabels)):
         trueImages.extend([i]*trueLabels[i].size(0))
-    trueImages = torch.longtensor(trueImages).to(device)
+    trueImages = torch.LongTensor(trueImages).to(device)
     trueBoxes = torch.cat(trueBoxes, dim=0)
     trueLabels = torch.cat(trueLabels, dim=0)
     trueScores = torch.cat(trueScores, dim=0)
@@ -116,7 +116,7 @@ def calcmap(ourBoxes, ourLabels, ourScores, trueBoxes, trueLabels, trueScores):
     ourImages = []
     for i in range(len(ourLabels)):
         ourImages.extend([i]*ourLabels[i].size(0))
-    ourImages = torch.longtensor(ourImages).to(device)
+    ourImages = torch.LongTensor(ourImages).to(device)
     ourBoxes = torch.cat(ourBoxes, dim=0)
     ourLabels = torch.cat(ourLabels, dim=0)
     ourScores = torch.cat(ourScores, dim=0)
@@ -186,7 +186,7 @@ def findJaccardOverlap(box1, box2):
 
 def findIntersection(set1, set2):
     lowerBounds = torch.max(set1[:,:2].unsqueeze(1), set2[:,:2].unsqueeze(0))
-    upperBounds = torch.min(set1[:,:2].unsqueeze(1), set2[:,:2].unsqueeze(0))
+    upperBounds = torch.min(set1[:,2:].unsqueeze(1), set2[:,2:].unsqueeze(0))
     dimensions = torch.clamp(upperBounds - lowerBounds, min=0)
     dimensions = dimensions[:,:,0] * dimensions[:,:,1]
     return dimensions
@@ -211,7 +211,7 @@ def clipGradient(optimizer, gradientClip):
             if param.grad is not None:
                 param.grad.data.clamp_(-gradientClip, gradientClip)
 def saveCheckPoint(epoch, model, optimizer, filename = None):
-    state = {"epoch": epoch, "model": model.state_dict(), "optimizer": optimizer.state_dict()}
+    state = {"epoch": epoch, "model": model, "optimizer": optimizer}
     if filename is None:
         filename = "checkpoint" + str(epoch) + ".pth.tar"
     torch.save(state, filename)
@@ -249,9 +249,9 @@ def ranCrop(image, boxes, labels, difficulties):
              if not 0.5 < aspectRatio < 2:
                  continue
              left = random.randint(0, originalWidth - newWidth)
-             right = left + originalWidth
+             right = left + newWidth
              top = random.randint(0, originalHeight - newHeight)
-             bottom = top + originalHeight
+             bottom = top + newHeight
              cropped = torch.FloatTensor([left, top, right, bottom])
              overlap = findJaccardOverlap(cropped.unsqueeze(0), boxes)
              overlap = overlap.squeeze(0)
@@ -317,14 +317,14 @@ def transform(image, boxes, labels, difficulties, split):
             newImage, newBoxes = flip(newImage, newBoxes)
     newImage, newBoxes = resize(newImage, newBoxes)
     newImage = TF.to_tensor(newImage)
-    newimage = TF.normalize(newImage, mean=mean, std=std)
+    newImage = TF.normalize(newImage, mean=mean, std=std)
     return newImage, newBoxes, newLabels, newDifficulties
 def accuracy(scores, targets, k):
     batchSize = targets.size(0)
     _, index = scores.topk(k, 1, True, True)
     correct = index.eq(targets.view(-1, 1).expand_as(index))
     correctTotal = correct.view(-1).float().sum().item()
-    return correctTotal / (batchSize * 100)
+    return correctTotal.item() * (100 / batchSize)
 class AverageMeter(object):
     """Computes and stores the average and current value"""
     def __init__(self):

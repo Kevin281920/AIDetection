@@ -34,24 +34,26 @@ def main():
         print("Loading From Checkpoint")
         checkpoint = torch.load(checkPointPath, map_location=modelConfig.device)
         startEpochs = checkpoint["epoch"] + 1
-        model = MainModel(modelConfig)
-        biases = []
+        #model = MainModel(modelConfig)
+        model = checkpoint["model"]
+        optimizer = checkpoint["optimizer"]
+        """biases = []
         notBiases = []
         for paramName, param in model.named_parameters():
             if param.requires_grad:
                 if paramName.endswith("bias"):
                     biases.append(param)
                 else:
-                    notBiases.append(param)
-        optimizer = torch.optim.SGD(
+                    notBiases.append(param)"""
+        """optimizer = torch.optim.SGD(
             params=[{"params": biases, "lr": 2 * trainConfig.learning_rate}, {'params': notBiases}],
-            lr=trainConfig.learning_rate, momentum=trainConfig.momentum, weight_decay=trainConfig.weight_decay)
-        model.load_state_dict(checkpoint["model"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
-        for state in optimizer.state.values():
+            lr=trainConfig.learning_rate, momentum=trainConfig.momentum, weight_decay=trainConfig.weight_decay)"""
+        #model.load_state_dict(checkpoint["model"])
+        #optimizer.load_state_dict(checkpoint["optimizer"])
+        """for state in optimizer.state.values():
             for k, v in state.items():
                 if torch.is_tensor(v):
-                    state[k] = v.cuda()
+                    state[k] = v.cuda()"""
 
     model = model.to(modelConfig.device)
     criterion = multiboxloss(priorscxcy=model.priorscxcy).to(modelConfig.device)

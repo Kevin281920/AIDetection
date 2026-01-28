@@ -11,7 +11,7 @@ class TrainingConfig:
     decay_LR = (8000, 10000)
     decayed_LR = 0.1
     gradient_clipping = None
-    checkpoint = "./checkpoint0.pth.tar"
+    checkpoint = None
     iter = 120000
 @dataclass
 class DataConfig:

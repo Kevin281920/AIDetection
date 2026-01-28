@@ -6,9 +6,11 @@
   <component name="ChangeListManager">
     <list default="true" id="4cf87138-0114-4807-8af9-65849073a64a" name="Changes" comment="saving, learning rate, gradient, intersection of boxes, image resizing and distorting, model">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Config.py" beforeDir="false" afterPath="$PROJECT_DIR$/Config.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Eval.py" beforeDir="false" afterPath="$PROJECT_DIR$/Eval.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Model.py" beforeDir="false" afterPath="$PROJECT_DIR$/Model.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/Utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/train.py" beforeDir="false" afterPath="$PROJECT_DIR$/train.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -45,23 +47,24 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.CreateDataList.executor": "Run",
-    "Python.Dataset.executor": "Run",
-    "Python.DatasetImport.executor": "Run",
-    "Python.Eval.executor": "Run",
-    "Python.Utils.executor": "Run",
-    "Python.torchtest.executor": "Run",
-    "Python.train.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "master",
-    "last_opened_file_path": "C:/Users/kevin/PycharmProjects/AI_Detection"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python.CreateDataList.executor&quot;: &quot;Run&quot;,
+    &quot;Python.Dataset.executor&quot;: &quot;Run&quot;,
+    &quot;Python.DatasetImport.executor&quot;: &quot;Run&quot;,
+    &quot;Python.Eval.executor&quot;: &quot;Run&quot;,
+    &quot;Python.Model.executor&quot;: &quot;Run&quot;,
+    &quot;Python.Utils.executor&quot;: &quot;Run&quot;,
+    &quot;Python.torchtest.executor&quot;: &quot;Run&quot;,
+    &quot;Python.train.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/kevin/PycharmProjects/AI_Detection&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\kevin\PycharmProjects\AI_Detection" />
@@ -162,7 +165,15 @@
       <option name="project" value="LOCAL" />
       <updated>1768958757677</updated>
     </task>
-    <option name="localTasksCounter" value="11" />
+    <task id="LOCAL-00011" summary="saving, learning rate, gradient, intersection of boxes, image resizing and distorting, model">
+      <option name="closed" value="true" />
+      <created>1768960558324</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1768960558324</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
